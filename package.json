@@ -1,0 +1,21 @@
+{
+  "name": "webrtc-video-call-server",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.1",
+    "socket.io": "^4.8.3",
+    "webrtc-video-call-mern": "file:.."
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.14"
+  }
+}
