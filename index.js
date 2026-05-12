@@ -5,15 +5,36 @@ const { Server } = require("socket.io");
 require("dotenv").config();
 
 const PORT = Number(process.env.PORT || 3001);
-const allowedOrigins = String(process.env.CLIENT_ORIGIN || "http://localhost:5173")
-  .split(",")
-  .map((s) => s.trim())
-  .filter(Boolean);
+const defaultOrigins = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://mesaurav.in",
+  "https://www.mesaurav.in",
+  "https://video-call-client-6dc5.vercel.app",
+];
+
+function normalizeOrigin(origin) {
+  return String(origin || "").trim().replace(/\/+$/, "");
+}
+
+const allowedOrigins = [
+  ...defaultOrigins,
+  ...String(process.env.CLIENT_ORIGIN || "")
+    .split(",")
+    .map((s) => normalizeOrigin(s))
+    .filter(Boolean),
+];
+
+function isAllowedLocalOrigin(origin) {
+  return /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin);
+}
 
 function corsOrigin(origin, callback) {
   // Allow non-browser requests (no Origin header).
   if (!origin) return callback(null, true);
-  if (allowedOrigins.includes(origin)) return callback(null, true);
+  const normalizedOrigin = normalizeOrigin(origin);
+  if (allowedOrigins.includes(normalizedOrigin)) return callback(null, true);
+  if (isAllowedLocalOrigin(normalizedOrigin)) return callback(null, true);
   return callback(new Error("Not allowed by CORS"));
 }
 
@@ -40,7 +61,7 @@ const io = new Server(server, {
 
 /**
  * In-memory room state (no DB).
- * roomCode -> { hostId: string, guestId: string | null }
+ * roomCode -> { hostId: string, guestId: string | null, roomType: "video" | "voice" }
  */
 const rooms = new Map();
 
@@ -56,14 +77,16 @@ function getRoomOccupants(code) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("room:create", (ack) => {
+  socket.on("room:create", ({ roomType } = {}, ack) => {
     let code = generateRoomCode();
     while (rooms.has(code)) code = generateRoomCode();
 
-    rooms.set(code, { hostId: socket.id, guestId: null });
+    const normalizedRoomType = roomType === "voice" ? "voice" : "video";
+
+    rooms.set(code, { hostId: socket.id, guestId: null, roomType: normalizedRoomType });
     socket.join(code);
 
-    ack?.({ ok: true, code });
+    ack?.({ ok: true, code, roomType: normalizedRoomType });
   });
 
   socket.on("room:join", ({ code }, ack) => {
@@ -80,8 +103,8 @@ io.on("connection", (socket) => {
 
     // Notify both sides to start WebRTC negotiation (host initiates offer).
     socket.to(normalized).emit("peer:joined");
-    socket.emit("room:joined", { code: normalized });
-    ack?.({ ok: true });
+    socket.emit("room:joined", { code: normalized, roomType: room.roomType });
+    ack?.({ ok: true, roomType: room.roomType });
   });
 
   socket.on("signal", ({ code, data }) => {
